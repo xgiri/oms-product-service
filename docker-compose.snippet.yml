@@ -1,0 +1,65 @@
+# Not a full docker-compose.yml — this is a snippet to fold into oms-main's
+# existing docker-compose.yml (or a docker-compose.override.yml alongside
+# it), since product-service needs to reach the SAME Kafka broker and
+# auth-service (still inside oms-main) that already exist there. Copy the
+# `product-db` and `product-service` blocks below into that file's
+# `services:` section, then run `docker compose up product-service` from
+# there — don't try to run this file standalone, it has no `postgres`,
+# `kafka`, or `redis` services of its own on purpose (reuses oms-main's).
+#
+# product-service gets its own Postgres (product-db) — a separate container/
+# volume, per the Phase 4 plan's data-cutover step — but shares oms-main's
+# existing kafka and redis containers, same as any other service reaching
+# the same broker/cache cluster would in a real deployment.
+
+  product-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: product_service
+      POSTGRES_USER: ${PRODUCT_DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${PRODUCT_DB_PASSWORD:-postgres}
+    ports:
+      - "5433:5432" # 5433, not 5432 — oms-main's own postgres is already on 5432 on the host
+    volumes:
+      - product-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PRODUCT_DB_USERNAME:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  product-service:
+    build:
+      context: . # relative to wherever this snippet actually lives once folded in — adjust the path to product-service's own repo checkout
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+        APP_VERSION: ${APP_VERSION:-unknown}
+    depends_on:
+      product-db:
+        condition: service_healthy
+      kafka: # oms-main's existing kafka service
+        condition: service_started
+    environment:
+      DB_HOST: product-db
+      DB_PORT: 5432
+      DB_NAME: product_service
+      DB_USERNAME: ${PRODUCT_DB_USERNAME:-postgres}
+      DB_PASSWORD: ${PRODUCT_DB_PASSWORD:-postgres}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092 # oms-main's internal kafka listener — adjust to match its actual service/port name
+      REDIS_HOST: redis # oms-main's existing redis service
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DATABASE: "1" # distinct logical DB from oms-main's own cache (see application.properties) — avoids key collisions on the shared instance
+      AUTH_SERVICE_JWKS_URI: http://app:8080/.well-known/jwks.json # oms-main's own service name inside the compose network — adjust if it differs
+    ports:
+      - "8082:8080"
+      - "8091:8081" # management/actuator port
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8081/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 45s
+      retries: 5
+
+volumes:
+  product-db-data:
