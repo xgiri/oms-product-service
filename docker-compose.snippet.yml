@@ -51,6 +51,7 @@
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DATABASE: "1" # distinct logical DB from oms-main's own cache (see application.properties) — avoids key collisions on the shared instance
       AUTH_SERVICE_JWKS_URI: http://app:8080/.well-known/jwks.json # oms-main's own service name inside the compose network — adjust if it differs
+      OTLP_TRACING_ENDPOINT: http://tempo:4318/v1/traces # oms-main's existing tempo service — added as part of Stage 2, see application.properties
     ports:
       - "8082:8080"
       - "8091:8081" # management/actuator port

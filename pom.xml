@@ -89,6 +89,28 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- Added as part of Stage 2 of the microservices-prep plan (Phase 4) —
+		     NOT part of this repo's original Stage 1 scaffold. oms-main gained
+		     distributed tracing (Tempo, via this same OTel bridge) after Stage 1
+		     was built, and its productclient.ProductClientConfig now sends a
+		     traceparent header on every call here (automatically, via
+		     ObservationRestClientCustomizer — see that class's Javadoc). Without
+		     this dependency, product-service would just ignore that header and
+		     start a disconnected trace of its own for every inbound request —
+		     these two artifacts are what makes Spring MVC extract the incoming
+		     traceparent and continue the SAME trace instead, the same way they
+		     do for oms-main (see that repo's pom.xml for the identical comment).
+		     Every inbound HTTP request gets a server span automatically, no code
+		     changes needed, exactly like the outbound side. -->
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-tracing-bridge-otel</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-opentelemetry</artifactId>
+		</dependency>
+
 		<!-- Backs the ProductResponse cache only (see common.config.CacheConfig) —
 		     no Redisson here, this is plain Spring Cache + Lettuce. -->
 		<dependency>

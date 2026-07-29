@@ -84,3 +84,25 @@ mvn spring-boot:run
 
 `AUTH_SERVICE_JWKS_URI` must point at a running oms-main instance's
 `/.well-known/jwks.json` for any authenticated request to validate.
+
+## Post-Stage-1 addition: distributed tracing
+
+oms-main gained distributed tracing (Micrometer Tracing + Tempo) after this
+scaffold was first built. `pom.xml` and `application.properties` were
+retrofitted during Stage 2 (once `productclient.ProductClientConfig` in
+oms-main started sending a `traceparent` header on every call here) so a
+trace started by an inbound HTTP request to oms-main continues cleanly
+through to this service instead of showing up as two disconnected traces in
+Tempo. `OTLP_TRACING_ENDPOINT` should point at the *same* Tempo instance
+oms-main exports to.
+
+**Known gap, not yet addressed:** this service's own local outbox
+(`OutboxEvent`/`OutboxPublisher`) does not yet have oms-main's `trace_id`/
+`span_id` columns or its `OutboxTraceLinking` mechanism (see oms-main's
+`V21__add_trace_context_to_outbox_events.sql` and that class's Javadoc for
+why the outbox pattern needs this — a scheduled poller thread has no live
+span of its own). That means a `ProductCreated`/`ProductUpdated`/
+`ProductDeleted` event published from here won't (yet) carry a span link
+back to whatever request caused it. Worth porting over, but it's a separate,
+self-contained fix from "does an inbound HTTP request's trace continue" —
+not bundled into this pass.
