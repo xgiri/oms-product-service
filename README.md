@@ -96,13 +96,16 @@ through to this service instead of showing up as two disconnected traces in
 Tempo. `OTLP_TRACING_ENDPOINT` should point at the *same* Tempo instance
 oms-main exports to.
 
-**Known gap, not yet addressed:** this service's own local outbox
-(`OutboxEvent`/`OutboxPublisher`) does not yet have oms-main's `trace_id`/
-`span_id` columns or its `OutboxTraceLinking` mechanism (see oms-main's
-`V21__add_trace_context_to_outbox_events.sql` and that class's Javadoc for
-why the outbox pattern needs this — a scheduled poller thread has no live
-span of its own). That means a `ProductCreated`/`ProductUpdated`/
-`ProductDeleted` event published from here won't (yet) carry a span link
-back to whatever request caused it. Worth porting over, but it's a separate,
-self-contained fix from "does an inbound HTTP request's trace continue" —
-not bundled into this pass.
+**Outbox events now carry trace context too.** `OutboxEvent` gained
+`trace_id`/`span_id` columns (`V3__add_trace_context_to_outbox_events.sql`),
+`OutboxService.enqueue()` captures the current span at enqueue time, and
+`OutboxPublisher` uses a new `OutboxTraceLinking` (own copy, not shared —
+same reasoning as this service's local outbox in the first place) to add a
+span link when it eventually publishes. This closes the gap this README used
+to describe here: a `ProductCreated`/`ProductUpdated`/`ProductDeleted` event
+published from here now traces back to whatever request caused it, instead
+of showing up as a disconnected trace. Ported directly from oms-main's own
+`V21__add_trace_context_to_outbox_events.sql` / `OutboxTraceLinking` — same
+mechanism, done as a separate pass from the original Stage 2 retrofit above,
+since "does an inbound request's trace continue" and "does an outbox-published
+event link back to it" are genuinely separate questions.

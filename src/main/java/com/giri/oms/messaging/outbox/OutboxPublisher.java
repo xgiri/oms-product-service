@@ -2,6 +2,7 @@ package com.giri.oms.messaging.outbox;
 
 import com.giri.oms.common.correlation.MdcCorrelation;
 import com.giri.oms.messaging.config.KafkaAppProperties;
+import io.micrometer.tracing.Tracer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -39,6 +40,7 @@ public class OutboxPublisher {
     private final KafkaAppProperties kafkaAppProperties;
     private final Clock clock;
     private final OutboxMetrics outboxMetrics;
+    private final Tracer tracer;
 
     /**
      * {@code @Transactional} here isn't incidental — it's what makes
@@ -79,12 +81,18 @@ public class OutboxPublisher {
     }
 
     public void publishSingleEvent(OutboxEvent event) {
-        // This runs on scheduling-1, a shared pool thread with no MDC of its own —
-        // scope the correlation id (captured back when OutboxService.enqueue()
-        // wrote this row) to just this event's publish, so a batch of unrelated
-        // events being flushed in the same poll never bleed correlation ids into
-        // each other's log lines.
-        MdcCorrelation.runWithCorrelationId(event.getCorrelationId(), () -> doPublish(event));
+        // This runs on scheduling-1, a shared pool thread with no MDC or live
+        // span of its own — scope both the correlation id and a span linked
+        // back to the enqueueing trace (captured back when
+        // OutboxService.enqueue() wrote this row) to just this event's
+        // publish, so a batch of unrelated events flushed in the same poll
+        // never bleed into each other's log lines or traces. See
+        // OutboxTraceLinking for why a link rather than a parent/child span.
+        // Ported from oms-main's identical OutboxPublisher — see this repo's
+        // README for why this was a separate pass from the original Stage 2
+        // tracing retrofit.
+        MdcCorrelation.runWithCorrelationId(event.getCorrelationId(), () ->
+                OutboxTraceLinking.runWithLinkedSpan(tracer, event.getTraceId(), event.getSpanId(), () -> doPublish(event)));
     }
 
     private void doPublish(OutboxEvent event) {
