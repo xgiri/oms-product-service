@@ -73,10 +73,23 @@ plan; this README covers what Stage 1 specifically delivered.
 
 ## Running locally
 
-Needs Docker (Testcontainers for `mvn test`) and a running Postgres, Redis,
-and Kafka broker reachable at the `DB_*`/`REDIS_*`/`KAFKA_BOOTSTRAP_SERVERS`
-env vars (see `application.properties`). See `docker-compose.snippet.yml`
-for how to run this alongside oms-main's existing containers.
+`product-db` and `product-service` are already folded into `oms-main`'s own
+`docker-compose.yml` (this repo's `docker-compose.snippet.yml` is now
+historical reference — see its header). From an `oms-main` checkout with
+`product-service` cloned as a sibling directory:
+
+```
+docker compose up product-db product-service
+```
+
+Ports: app `8082`, actuator/management `8093`, Postgres `5433`. The
+management port moved from `8091` to `8093` during the merge — `8091` was
+already oms-gateway's host port in oms-main's `docker-compose.yml`, a
+collision the original snippet didn't anticipate since it was written before
+oms-gateway existed in that file.
+
+For running outside Docker instead (Testcontainers for `mvn test` still
+needs Docker regardless):
 
 ```
 mvn spring-boot:run

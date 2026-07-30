@@ -1,3 +1,9 @@
+# SUPERSEDED — already folded into oms-main's docker-compose.yml. Kept here
+# for reference (what product-service itself expects env-wise) rather than
+# deleted, but oms-main's copy is the one that's actually run — see this
+# repo's README "Running locally" section. If you edit env var requirements
+# here, update oms-main's docker-compose.yml too; they will drift otherwise.
+#
 # Not a full docker-compose.yml — this is a snippet to fold into oms-main's
 # existing docker-compose.yml (or a docker-compose.override.yml alongside
 # it), since product-service needs to reach the SAME Kafka broker and
