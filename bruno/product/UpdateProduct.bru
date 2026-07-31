@@ -1,0 +1,20 @@
+meta {
+  name: UpdateProduct
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/v1/products/4
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "id": 4,
+    "name": "Product4 new",
+    "description": "Product4 new description",
+    "price": 401
+  }
+}

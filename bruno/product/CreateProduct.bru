@@ -1,0 +1,25 @@
+meta {
+  name: CreateProduct
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/products
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "name": "product9",
+    "description": "Product9 description",
+    "price": 100
+  }
+}
+
+docs {
+  Mapped at /products here, not /api/v1/products like oms-main — product-service
+  has no context-path/version prefix configured (see ProductController's
+  @RequestMapping("/products")).
+}

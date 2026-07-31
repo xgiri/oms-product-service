@@ -1,0 +1,18 @@
+meta {
+  name: DeleteProduct
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/v1/products/11
+  body: none
+  auth: inherit
+}
+
+docs {
+  Restricted to ADMIN (see ProductController.deleteProduct's @PreAuthorize) —
+  the Login request's default admin credentials satisfy this. Soft-delete, not
+  a hard delete (see ProductStatus) — the product flips to DISCONTINUED rather
+  than disappearing; GetProduct on the same id afterward still returns it.
+}

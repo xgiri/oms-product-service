@@ -1,0 +1,16 @@
+meta {
+  name: GetAllProducts
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/products?pageNo=0&sortBy=name
+  body: none
+  auth: inherit
+}
+
+params:query {
+  pageNo: 0
+  sortBy: name
+}

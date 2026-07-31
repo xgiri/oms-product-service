@@ -1,0 +1,26 @@
+meta {
+  name: SearchProductsAdvanced
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/v1/products/search/advanced?name=pro&minPrice=100&maxPrice=500&page=0&size=10&sort=price,desc
+  body: none
+  auth: inherit
+}
+
+params:query {
+  name: pro
+  minPrice: 100
+  maxPrice: 500
+  page: 0
+  size: 10
+  sort: price,desc
+}
+
+docs {
+  Same filters/behavior as SearchProducts — this variant is implemented with
+  JpaSpecificationExecutor instead of a hand-written JPQL @Query. Kept
+  alongside SearchProducts for comparison, same as in oms-main.
+}

@@ -1,0 +1,44 @@
+meta {
+  name: Login (via oms-main)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{authBaseUrl}}/api/v1/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "username": "admin",
+    "password": "Admin@123"
+  }
+}
+
+script:post-response {
+  if (res.body && res.body.accessToken) {
+    console.log("🚀 Script executed successfully!");
+    bru.setEnvVar("token", res.body.accessToken);
+    console.log("Token: " + bru.getEnvVar("token"));
+  }
+}
+
+docs {
+  product-service does not issue tokens itself — it only verifies them (see
+  security.SecurityConfig, which validates against oms-main's JWKS endpoint,
+  not a login flow of its own). This request hits oms-main's real login
+  endpoint (authBaseUrl, a separate env var from this collection's own
+  baseUrl) purely to obtain a token, then stores it in this collection's own
+  `token` env var — every product request below sends it automatically as
+  its Bearer token, same as oms-main's own collection does.
+
+  Default credentials are the admin account oms-main bootstraps automatically
+  on first startup (see that repo's application.properties:
+  app.security.default-admin-username / app.security.default-admin-password).
+
+  If authBaseUrl doesn't point at a reachable oms-main instance, this request
+  (and therefore every authenticated request below) will fail — product-service
+  being reachable is not enough on its own.
+}
