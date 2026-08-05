@@ -1,0 +1,52 @@
+# Non-secret config for product-service's Deployment. Same split between
+# ConfigMap (this file) and Secret (01-secret.example.yaml) as oms-main's
+# own k8s/00-configmap.yaml — see that file's comment for the general
+# reasoning; not repeated here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: product-service-config
+  labels:
+    app.kubernetes.io/name: product-service
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+
+  DB_HOST: "product-db"    # replace with your managed Postgres host/Service name — this service's OWN database, not oms-main's
+  DB_PORT: "5432"
+  DB_NAME: "product_service"
+
+  # Same INTERNAL-listener reasoning as oms-main's own ConfigMap — must
+  # resolve from inside the cluster, not localhost.
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+
+  REDIS_HOST: "redis"      # replace with your managed Redis host/Service name
+  REDIS_PORT: "6379"
+  # Distinct logical DB from oms-main's own cache use — see
+  # docker-compose.snippet.yml's REDIS_DATABASE comment for why (avoids key
+  # collisions on a shared Redis instance, if you're pointing both services
+  # at the same one).
+  REDIS_DATABASE: "1"
+
+  # oms-main's own in-cluster Service name/port (see that repo's
+  # k8s/03-service-web.yaml) — product-service only ever VERIFIES a token
+  # against this (see security.SecurityConfig), it never calls back to
+  # oms-main for anything else. Replace the host if oms-main isn't named
+  # oms-web in your cluster, or if it lives in a different namespace
+  # (oms-web.<namespace>.svc.cluster.local).
+  AUTH_SERVICE_JWKS_URI: "http://oms-web:8080/.well-known/jwks.json"
+
+  # Same Tempo collector oms-main exports to — see that repo's own
+  # ConfigMap/application.properties for why both sides need to agree on
+  # this for a trace to show up as one continuous span across the two
+  # services, not two disconnected ones (Stage 2 of the microservices-prep
+  # plan).
+  OTLP_TRACING_ENDPOINT: "http://tempo:4318/v1/traces"
+
+  # Unset here on purpose — see OutboxPublisher's Javadoc. A single
+  # Deployment (02-deployment.yaml) runs both the API and the outbox
+  # publisher together, same as oms-main's own default before it split into
+  # web/worker. Splitting product-service the same way is a real option once
+  # (if) its load actually justifies it — set this per-Deployment (web/
+  # worker) the same way oms-main's 02-deployment-web.yaml/
+  # 06-deployment-worker.yaml do, not here, if that day comes.
+  # APP_PROCESS_ROLE: "web"

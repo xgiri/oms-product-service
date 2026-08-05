@@ -1,0 +1,15 @@
+# Single PDB — only one Deployment here (see 02-deployment.yaml's note on
+# why there's no web/worker split yet), unlike oms-main which needs one PDB
+# per role. Same node-drain/upgrade protection rationale as oms-main's own
+# 08-pdb.yaml.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: product-service
+  labels:
+    app.kubernetes.io/name: product-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: product-service

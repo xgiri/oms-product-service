@@ -1,0 +1,89 @@
+# Stage 7 of the microservices-prep plan. No equivalent exists in oms-main
+# to mirror — that repo has no CI pipeline defined at all as of this
+# writing — so this is a fresh, standard build/test/publish pipeline rather
+# than a port of an existing pattern. Worth considering as a template for
+# oms-main/customer-service/shipment-service too, if none of them have one
+# either.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      # ./mvnw isn't checked into this repo yet (same gap the Dockerfile's
+      # own comment notes — no .mvn/wrapper here). setup-java's cache: maven
+      # above still works fine with the system mvn; switch this to ./mvnw
+      # once `mvn -N wrapper:wrapper` has actually been run and committed.
+      - name: Build and test
+        run: mvn -B verify
+
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+          retention-days: 14
+
+  build-and-push-image:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    # Only on an actual push to main or a version tag — not on pull_request
+    # events, which have no business publishing an image.
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # GHCR (GitHub Container Registry), not Docker Hub — no extra secret
+      # to provision, GITHUB_TOKEN already has package-write scope granted
+      # above. Swap this (and the image name below) for your real registry
+      # if you're not using GHCR.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,prefix=
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # GIT_SHA/APP_VERSION build args match the Dockerfile's ARGs — these
+      # end up in info.app.version/info.app.git-sha at runtime
+      # (application.properties), visible on /actuator/info.
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            APP_VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

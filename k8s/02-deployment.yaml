@@ -1,0 +1,109 @@
+# Single Deployment, unlike oms-main's web/worker split — product-service
+# has no @KafkaListener consumer yet (see messaging.config.KafkaConfig's
+# Javadoc: "producer-only in Stage 1"), so there's no separate backlog-driven
+# workload to scale independently. This runs the API and the outbox
+# publisher together in one process, same as oms-main did before it split —
+# see OutboxPublisher's Javadoc and 00-configmap.yaml's note on
+# APP_PROCESS_ROLE for how to split this later if load ever justifies it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-service
+  labels:
+    app.kubernetes.io/name: product-service
+spec:
+  # Baseline replica count — 04-hpa.yaml takes over from here. Keep in sync
+  # with the HPA's minReplicas, same reasoning as oms-main's own Deployment.
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: product-service
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: product-service
+      annotations:
+        # For plain (non-Operator) Prometheus using annotation-based pod
+        # discovery — same convention as oms-main's Deployments. Redundant
+        # but harmless if you're using 06-podmonitor.yaml (Prometheus
+        # Operator) instead.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      # Matches spring.lifecycle.timeout-per-shutdown-phase=30s / spring.task.
+      # scheduling.shutdown.await-termination-period=30s in application.properties
+      # — same "comfortably above both" reasoning as oms-main's Deployments.
+      terminationGracePeriodSeconds: 45
+      # No serviceAccountName override — product-service has no Vault
+      # integration yet (see 01-secret.example.yaml's note), so there's no
+      # Kubernetes-auth role to bind a dedicated ServiceAccount to. Add one
+      # here (mirroring oms-main's 12-serviceaccount.yaml) if/when that gap
+      # closes.
+      containers:
+        - name: product-service
+          # Replace with your real registry/tag, or wire this up via
+          # `kustomize edit set image` / a CI pipeline step (see this
+          # repo's .github/workflows/ci.yml).
+          image: your-registry.example.com/product-service:REPLACE_ME
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+            # management.server.port in application.properties — same
+            # actuator-on-a-separate-port reasoning as oms-main. Not part of
+            # 03-service.yaml's port list, only reachable in-cluster.
+            - name: metrics
+              containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: product-service-config
+            - secretRef:
+                name: product-service-secrets
+          # Same readiness/liveness health-group auto-detection as oms-main
+          # (management.health.readiness-state/.liveness-state are both on
+          # in application.properties) — no extra app config needed here.
+          # Both paths are permitAll in security.SecurityConfig.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: metrics
+            periodSeconds: 5
+            failureThreshold: 18   # ~90s ceiling for a cold start (Flyway migrations, JVM warmup)
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: metrics
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: metrics
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            # Starting point only, sized down from oms-main's own web
+            # Deployment — product-service's traffic today is (a) its own
+            # CRUD/search API and (b) validation calls from oms-main's
+            # ProductClient, both lighter than the monolith's full request
+            # surface. Tune from real numbers once this is running, same as
+            # oms-main's own comment says.
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            # Dockerfile already `USER productservice` (non-root) — this
+            # just asserts it, same as oms-main's Deployments.
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false

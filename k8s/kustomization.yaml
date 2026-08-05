@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - 00-configmap.yaml
+  # 01-secret.example.yaml is intentionally NOT listed here — copy it, fill
+  # in real values, and either apply the copy separately or list your copy
+  # here instead. Never let real secrets ride through this directory as-is.
+  # Same rule, same reasoning, as oms-main's own kustomization.yaml.
+  - 02-deployment.yaml
+  - 03-service.yaml
+  - 04-hpa.yaml
+  - 05-pdb.yaml
+  # - 06-podmonitor.yaml   # requires Prometheus Operator CRDs — uncomment if you run it
+  # - 07-grafana-dashboard.yaml   # requires kube-prometheus-stack's Grafana sidecar — uncomment if you run it
+
+# Convenience for CI: `kustomize edit set image product-service=your-registry/product-service:$GIT_SHA`
+# rewrites the image in one shot — see this repo's .github/workflows/ci.yml.
+images:
+  - name: your-registry.example.com/product-service
+    newName: your-registry.example.com/product-service
+    newTag: REPLACE_ME

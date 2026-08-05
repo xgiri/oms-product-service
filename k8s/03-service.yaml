@@ -1,0 +1,20 @@
+# ClusterIP — external routing is oms-gateway's job (not covered here; see
+# this repo's README for the current state of that). This Service is only
+# for in-cluster callers: oms-gateway routing to it, and oms-main's
+# ProductClient calling it directly (see that repo's
+# app.productclient.base-url — point it at this Service's DNS name,
+# product-service.<namespace>.svc.cluster.local, in a real deployment).
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-service
+  labels:
+    app.kubernetes.io/name: product-service
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: product-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

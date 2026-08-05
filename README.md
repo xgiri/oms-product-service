@@ -1,49 +1,60 @@
 # product-service
 
-Product catalog, extracted from [oms-main](../oms-main) as Phase 4 of that
-project's microservices-prep plan. This is **Stage 1 only**: a standalone,
-runnable deployable with its own database and its own local outbox — nothing
-in oms-main has been changed or removed yet, and nothing calls this service
-over the network yet. See the Stage 0/1 decision log for the full multi-stage
-plan; this README covers what Stage 1 specifically delivered.
+Product catalog, extracted from oms-main as Phase 4 of that project's
+microservices-prep plan. This is the **canonical source of product data** —
+oms-main's own `product` package is gone (removed at Stage 5, once this
+service's cutover was confirmed stable); every product read/write in the
+system goes through this service now, whether directly or via
+oms-main's `productclient.ProductClient` (used internally by order and
+inventory validation) or oms-gateway's `/api/v1/products/**` route.
 
 ## What's here
 
-- Product CRUD + search (JPQL and Specification variants), carried over
-  from oms-main's `product` package essentially unchanged.
+- Product CRUD + search (JPQL and Specification variants).
 - Its own transactional outbox (`OutboxEvent`/`OutboxService`/
   `OutboxPublisher`/`OutboxEventRepository`) publishing
-  `ProductCreated`/`ProductUpdated`/`ProductDeleted` onto the **same**
-  `oms.product.events` Kafka topic oms-main's `ProductEventFactory` already
-  used — oms-main's `ProductEventInventoryConsumer` (which maintains
-  inventory's `product_ref` read replica) needs **zero changes** to keep
-  working against this service instead.
-- Its own Postgres database (`product_service`), seeded with a *fresh*
-  migration history reflecting the current shape of oms-main's `products`
-  table (post soft-delete, post optimistic-locking column) — not a copy of
-  oms-main's full V1→V20 migration chain, most of which no longer applies.
-- Stateless JWT verification against oms-main's existing
-  `/.well-known/jwks.json` (see `security.SecurityConfig`) — this service
-  never issues a token, only verifies one, so there's no signing key here at
-  all, unlike oms-main.
+  `ProductCreated`/`ProductUpdated`/`ProductDeleted` onto `oms.product.events`
+  — oms-main's `ProductEventInventoryConsumer` (which maintains inventory's
+  `product_ref` read replica) consumes from here now, not from anything in
+  oms-main. Outbox events carry trace context too — see "Distributed tracing"
+  below.
+- Its own Postgres database (`product_service`) — the actual, live product
+  catalog data, migrated over from oms-main's `oms_product.products` during
+  the Stage 3 cutover (see oms-main's `docs/stage3-data-cutover-runbook-product.md`
+  for how that ran) and written to directly ever since; oms-main's own copy
+  of that table no longer exists.
+- Stateless JWT verification against oms-main's `/.well-known/jwks.json`
+  (see `security.SecurityConfig`) — this service never issues a token, only
+  verifies one, so there's no signing key here at all, unlike oms-main.
+- `k8s/` manifests (Deployment, Service, HPA, PDB, ConfigMap/Secret template,
+  optional PodMonitor + Grafana dashboard ConfigMap) and a GitHub Actions CI
+  pipeline (`.github/workflows/ci.yml`) — see `k8s/README.md` for the full
+  deployment story.
+- A Bruno collection (`bruno/`) for exercising the API directly, including
+  its own `Login` request that fetches a token from oms-main (this service
+  doesn't issue tokens itself — see the JWT verification point above).
+- Routed externally through oms-gateway at `/api/v1/products/**` (and its
+  own Swagger docs proxied at `/product-service/docs`) — see
+  `application.properties`' `server.forward-headers-strategy`/
+  `springdoc.swagger-ui.url` for the prefix-handling details that route
+  depends on.
 
-## What's deliberately NOT here (yet)
+## What's still genuinely not here
 
-- **No HTTP client wiring.** Nothing in oms-main calls this service yet —
-  `OrderServiceImpl`'s and `InventoryServiceImpl`'s product-validation calls
-  are still in-process against oms-main's own (still present, still running)
-  `product` package. That's Stage 2 (API contract + `ProductClient`) and
-  Stage 4 (swapping the call sites).
-- **No data migration yet.** This service's database starts empty. Copying
-  oms-main's actual `oms_product.products` rows over is Stage 3.
-- **No Kafka consumer.** This service is producer-only for now — see the
-  comment in `messaging/config/KafkaConfig`. No `@KafkaListener`, no
-  `DefaultErrorHandler`/dead-letter wiring, because nothing here consumes a
-  topic yet.
-- **No k8s manifests / CI pipeline / Prometheus scrape config.** That's
-  Stage 7, once there's something worth deploying for real.
-- **oms-main's `product` package still exists, unchanged.** Deleting it is
-  Stage 5, after cutover is confirmed stable.
+- **No Kafka consumer.** Still producer-only — see the comment in
+  `messaging/config/KafkaConfig`. Nothing in this service's own domain needs
+  to react to another module's events yet.
+- **No Vault integration.** `k8s/01-secret.example.yaml` holds plain
+  values as a stopgap — worth closing before this ever holds production
+  credentials; see that file's own comment.
+- **No Maven wrapper.** `./mvnw` isn't checked in — the Dockerfile and CI
+  workflow both route around this with a system-installed Maven instead.
+  Run `mvn -N wrapper:wrapper` and commit the result whenever this becomes
+  worth fixing.
+- **Gateway routing exists, but this service doesn't know it's being
+  proxied for anything beyond Swagger.** The `X-Forwarded-Prefix`
+  handling only covers the docs UI (see `application.properties`) — there's
+  no broader awareness of running behind a gateway elsewhere in the app.
 
 ## Deliberate deviations from a straight copy-paste of oms-main
 
